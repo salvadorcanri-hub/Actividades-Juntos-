@@ -1,0 +1,6 @@
+{
+  "name": "Actividades Juntos",
+  "description": "Plataforma de gestión de proyectos escolares en grupo con aislamiento de contexto por asignatura, validación de evidencias Anti-Paseos, cálculo de equidad y recursos anclados.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

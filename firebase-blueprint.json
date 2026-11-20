@@ -1,0 +1,285 @@
+{
+  "entities": {
+    "UserPublicProfile": {
+      "title": "UserPublicProfile",
+      "description": "Public student profile metadata without PII.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "description": "UID of the authenticated student owner.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Student full display name.",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "gradeCourse": {
+          "type": "string",
+          "description": "Student grade or school section.",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "activeGroupId": {
+          "type": "string",
+          "description": "Currently selected group ID for this student.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation server timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last update server timestamp."
+        }
+      },
+      "required": [
+        "ownerId",
+        "displayName",
+        "gradeCourse",
+        "activeGroupId",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "UserPrivateInfo": {
+      "title": "UserPrivateInfo",
+      "description": "Isolated PII document containing the student email address.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "description": "UID of the authenticated student owner.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Verified student email address.",
+          "minLength": 3,
+          "maxLength": 160
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation server timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last update server timestamp."
+        }
+      },
+      "required": ["ownerId", "email", "createdAt", "updatedAt"]
+    },
+    "StudentGroupDoc": {
+      "title": "StudentGroupDoc",
+      "description": "Isolated course project group container owned by a student.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "description": "UID of the student owner.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "description": "Project group name.",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "course": {
+          "type": "string",
+          "description": "Course or subject name.",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation server timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last update server timestamp."
+        }
+      },
+      "required": ["ownerId", "name", "course", "createdAt", "updatedAt"]
+    },
+    "StudentTaskDoc": {
+      "title": "StudentTaskDoc",
+      "description": "Task card inside a student course group with Anti-Paseos evidence validation.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "description": "UID of the student owner.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "groupId": {
+          "type": "string",
+          "description": "Parent group ID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "title": {
+          "type": "string",
+          "description": "Task title.",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "assignee": {
+          "type": "string",
+          "description": "Assigned team member name.",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "dueDate": {
+          "type": "string",
+          "description": "Due date string.",
+          "minLength": 1,
+          "maxLength": 30
+        },
+        "priority": {
+          "type": "string",
+          "description": "Priority level.",
+          "enum": ["Alta", "Media", "Baja"],
+          "minLength": 4,
+          "maxLength": 10
+        },
+        "kanbanColumn": {
+          "type": "string",
+          "description": "Current Kanban column state.",
+          "enum": ["Por Hacer", "En Progreso", "Terminado"],
+          "minLength": 9,
+          "maxLength": 15
+        },
+        "evidenceUrl": {
+          "type": "string",
+          "description": "Mandatory evidence link when kanbanColumn is Terminado.",
+          "minLength": 0,
+          "maxLength": 500
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation server timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last update server timestamp."
+        }
+      },
+      "required": [
+        "ownerId",
+        "groupId",
+        "title",
+        "assignee",
+        "dueDate",
+        "priority",
+        "kanbanColumn",
+        "evidenceUrl",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "StudentResourceDoc": {
+      "title": "StudentResourceDoc",
+      "description": "Anchored course resource link inside a student group.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "description": "UID of the student owner.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "groupId": {
+          "type": "string",
+          "description": "Parent group ID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "title": {
+          "type": "string",
+          "description": "Resource title.",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "category": {
+          "type": "string",
+          "description": "Resource category label.",
+          "minLength": 1,
+          "maxLength": 60
+        },
+        "url": {
+          "type": "string",
+          "description": "Resource URL.",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation server timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last update server timestamp."
+        }
+      },
+      "required": [
+        "ownerId",
+        "groupId",
+        "title",
+        "category",
+        "url",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserPublicProfile" },
+      "description": "Public profile metadata for a student user."
+    },
+    "/users/{userId}/private/{docId}": {
+      "schema": { "$ref": "#/entities/UserPrivateInfo" },
+      "description": "Split collection isolating student PII (email)."
+    },
+    "/users/{userId}/groups/{groupId}": {
+      "schema": { "$ref": "#/entities/StudentGroupDoc" },
+      "description": "Course groups belonging to a student."
+    },
+    "/users/{userId}/groups/{groupId}/tasks/{taskId}": {
+      "schema": { "$ref": "#/entities/StudentTaskDoc" },
+      "description": "Tasks belonging to a specific student course group."
+    },
+    "/users/{userId}/groups/{groupId}/resources/{resourceId}": {
+      "schema": { "$ref": "#/entities/StudentResourceDoc" },
+      "description": "Anchored resources belonging to a specific student course group."
+    }
+  }
+}
