@@ -95,6 +95,8 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
     Record<string, string>
   >({});
   const [newMemberName, setNewMemberName] = useState('');
+  const [mobileStatusTab, setMobileStatusTab] =
+    useState<TaskStatus>('Por Hacer');
 
   const progress = calculateGroupProgress(activeGroup.tasks);
   const workloads = calculateMemberWorkloads(
@@ -171,10 +173,10 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
           <div className="absolute inset-0 bg-gradient-to-t from-[#0B0F17] via-[#0B0F17]/30 to-transparent" />
         </div>
 
-        <div className="relative z-10 px-6 pt-5 pb-4 space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="relative z-10 px-4 py-3.5 sm:px-6 lg:pt-5 lg:pb-4 space-y-3 lg:space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
             <div className="min-w-0 space-y-1">
-              <div className="flex items-center gap-2 text-xs text-sky-300/90">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-sky-300/90">
                 <span className="font-medium truncate">{activeGroup.course}</span>
                 <span aria-hidden="true">·</span>
                 <button
@@ -188,7 +190,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                   <Copy className="w-3 h-3" />
                 </button>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="hidden lg:flex items-center gap-3">
                 <h1 className="font-display text-2xl sm:text-3xl font-bold text-white tracking-tight truncate">
                   {activeGroup.name}
                 </h1>
@@ -212,7 +214,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
             {/* Tarjeta de Progreso con Anillo Animado y Barra */}
             <div
               aria-label="Progreso general del proyecto"
-              className="flex items-center gap-3.5 bg-[#11192B]/90 backdrop-blur-md border border-slate-700/70 px-4 py-2.5 rounded-2xl min-w-[250px] sm:min-w-[300px] shadow-lg"
+              className="flex items-center gap-3 bg-[#11192B]/90 backdrop-blur-md border border-slate-700/70 px-3.5 py-2 lg:px-4 lg:py-2.5 rounded-2xl w-full sm:w-auto sm:min-w-[280px] shadow-lg"
             >
               <div className="relative w-11 h-11 flex items-center justify-center shrink-0">
                 <svg className="w-11 h-11 -rotate-90" viewBox="0 0 44 44">
@@ -282,8 +284,25 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
             </div>
           </div>
 
-          {/* Barra de Pestañas (Tareas · Entregas · Equipo · Recursos) + Acción Principal */}
-          <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+          {/* Chip de filtro por integrante en móvil (si hay filtro activo) */}
+          {selectedMemberFilter && activeTab === 'tareas' && (
+            <div className="flex lg:hidden items-center justify-between gap-2 pt-0.5">
+              <span className="text-xs text-slate-400">
+                Mostrando tareas de{' '}
+                <strong className="text-sky-300">{selectedMemberFilter}</strong>
+              </span>
+              <button
+                type="button"
+                onClick={() => onSelectMemberFilter(null)}
+                className="px-2.5 py-1 text-xs text-sky-300 bg-sky-500/15 border border-sky-500/30 rounded-lg hover:bg-sky-500/25 cursor-pointer whitespace-nowrap"
+              >
+                Ver todas ✕
+              </button>
+            </div>
+          )}
+
+          {/* Barra de Pestañas en Escritorio (en celular viven en el menú lateral de 3 rayitas) */}
+          <div className="hidden lg:flex flex-wrap items-center justify-between gap-3 pt-1">
             <div
               role="tablist"
               aria-label="Vistas del proyecto"
@@ -390,7 +409,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
       </header>
 
       {/* CONTENIDO SEGÚN LA PESTAÑA ACTIVA CON ANIMACIÓN SUAVE */}
-      <div className="flex-1 p-5 sm:p-6 overflow-y-auto">
+      <div className="flex-1 p-4 sm:p-5 lg:p-6 overflow-y-auto">
         <AnimatePresence mode="wait">
           {activeTab === 'tareas' && (
             <motion.div
@@ -399,19 +418,61 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.18 }}
-              className="grid grid-cols-1 md:grid-cols-3 gap-5 items-start"
+              className="space-y-4 md:space-y-0"
             >
+              {/* Selector de Estado de Tareas en Celular (1 columna limpia a la vez) */}
+              <div
+                role="tablist"
+                aria-label="Seleccionar estado de tareas"
+                data-testid="mobile-status-selector"
+                className="grid grid-cols-3 gap-1 p-1 bg-[#0F1623]/95 border border-slate-800/90 rounded-xl md:hidden"
+              >
+                {COLUMNS.map((col) => {
+                  const count = filteredTasks.filter(
+                    (t) => t.status === col.status
+                  ).length;
+                  const isActive = mobileStatusTab === col.status;
+                  return (
+                    <button
+                      key={col.status}
+                      type="button"
+                      role="tab"
+                      aria-selected={isActive}
+                      onClick={() => setMobileStatusTab(col.status)}
+                      className={`min-h-[44px] px-2 py-2 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                        isActive
+                          ? 'bg-[#18253C] text-sky-300 shadow-xs border border-sky-500/30'
+                          : 'text-slate-400 hover:text-slate-200 border border-transparent'
+                      }`}
+                    >
+                      <span className="truncate">{col.title}</span>
+                      <span
+                        className={`font-mono text-[11px] tabular-nums ${
+                          isActive ? 'text-sky-200' : 'text-slate-500'
+                        }`}
+                      >
+                        {count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-5 items-start">
               {COLUMNS.map((col) => {
                 const columnTasks = filteredTasks.filter(
                   (t) => t.status === col.status
                 );
+                const isVisibleOnMobile = mobileStatusTab === col.status;
 
                 return (
                   <section
                     key={col.status}
                     aria-label={`Columna ${col.title}`}
                     data-testid={`kanban-col-${col.status}`}
-                    className="rounded-2xl bg-[#0F1623]/75 backdrop-blur-md border border-slate-800/80 flex flex-col min-h-[420px]"
+                    className={`${
+                      isVisibleOnMobile ? 'flex' : 'hidden md:flex'
+                    } rounded-2xl bg-[#0F1623]/75 backdrop-blur-md border border-slate-800/80 flex-col min-h-[260px] md:min-h-[420px]`}
                   >
                     <div className="px-4 py-3.5 border-b border-slate-800/80 flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
@@ -634,7 +695,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                                 )}
 
                                 {/* 4. Botón de Evidencia / Revisión y Cambio de Columna */}
-                                <div className="pt-2.5 border-t border-slate-800/80 flex items-center justify-between gap-2 whitespace-nowrap">
+                                <div className="pt-2.5 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2">
                                   {hasEvidence ? (
                                     <div className="flex items-center gap-1.5 min-w-0">
                                       <a
@@ -734,6 +795,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                   </section>
                 );
               })}
+              </div>
             </motion.div>
           )}
 
@@ -845,7 +907,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                         return (
                           <div
                             key={task.id}
-                            className="px-5 py-3.5 flex flex-wrap items-center justify-between gap-4 hover:bg-[#141E30]/60 transition-colors"
+                            className="px-4 sm:px-5 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 hover:bg-[#141E30]/60 transition-colors"
                           >
                             <div className="flex items-center gap-4 min-w-0 flex-1">
                               {/* Fecha Destacada */}

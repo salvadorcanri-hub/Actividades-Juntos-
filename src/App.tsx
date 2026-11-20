@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { CheckCircle2 } from 'lucide-react';
+import { CheckCircle2, Menu, Plus } from 'lucide-react';
 import { onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth';
 import {
   AppState,
@@ -130,6 +130,7 @@ export default function App() {
   const [selectedMemberFilter, setSelectedMemberFilter] = useState<
     string | null
   >(null);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Modal states
@@ -562,18 +563,79 @@ export default function App() {
     showToast('Datos iniciales restaurados para tu cuenta');
   };
 
+  const activeTabLabel: Record<WorkspaceTab, string> = {
+    tareas: 'Tareas',
+    entregas: 'Calendario de Entregas',
+    equipo: 'Equipo y Reparto',
+    recursos: 'Recursos Fijos',
+  };
+
   return (
     <div className="min-h-screen lg:h-screen w-full bg-[#0B0F17] text-slate-100 flex flex-col lg:flex-row overflow-x-hidden lg:overflow-hidden relative isolate">
       {/* Fondo Sutil con Gradiente Animado y Partículas Flotantes */}
       <AmbientBackground />
 
-      {/* Barra Lateral Izquierda Minimalista con Perfil del Estudiante */}
+      {/* Barra Superior Compacta en Celular (3 rayitas · Grupo activo · Acción rápida) */}
+      <header
+        aria-label="Barra superior móvil"
+        data-testid="mobile-top-bar"
+        className="lg:hidden sticky top-0 z-30 h-14 px-3 bg-[#0D1320]/95 backdrop-blur-xl border-b border-slate-800/90 flex items-center justify-between gap-2 shrink-0"
+      >
+        <button
+          type="button"
+          onClick={() => setIsMobileMenuOpen(true)}
+          aria-label="Abrir menú de navegación"
+          aria-expanded={isMobileMenuOpen}
+          data-testid="mobile-menu-trigger"
+          className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl bg-slate-800/70 hover:bg-slate-700/80 text-slate-100 border border-slate-700/80 transition-colors cursor-pointer shrink-0 active:scale-95"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
+
+        <div className="min-w-0 flex-1 text-left px-1">
+          <span
+            data-testid="mobile-header-group-name"
+            className="font-display text-sm font-bold text-white block truncate leading-tight"
+          >
+            {activeGroup.name}
+          </span>
+          <span className="text-[11px] text-sky-300/90 block truncate leading-tight mt-0.5">
+            {activeTabLabel[activeTab]}
+          </span>
+        </div>
+
+        {activeTab === 'recursos' ? (
+          <button
+            type="button"
+            onClick={() => setIsAddResourceOpen(true)}
+            data-testid="mobile-quick-action-btn"
+            className="inline-flex items-center gap-1 min-h-[40px] px-3 text-xs font-semibold text-slate-950 bg-sky-400 hover:bg-sky-300 rounded-xl transition-colors whitespace-nowrap shrink-0 cursor-pointer active:scale-95 shadow-xs"
+          >
+            <Plus className="w-4 h-4 stroke-[2.5]" />
+            <span>Enlace</span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => handleOpenNewTaskModal('Por Hacer')}
+            data-testid="mobile-quick-action-btn"
+            className="inline-flex items-center gap-1 min-h-[40px] px-3 text-xs font-semibold text-slate-950 bg-sky-400 hover:bg-sky-300 rounded-xl transition-colors whitespace-nowrap shrink-0 cursor-pointer active:scale-95 shadow-xs"
+          >
+            <Plus className="w-4 h-4 stroke-[2.5]" />
+            <span>Nueva Tarea</span>
+          </button>
+        )}
+      </header>
+
+      {/* Barra Lateral Izquierda (Fija en escritorio · Menú deslizable de 3 rayitas en celular) */}
       <LeftSidebar
         currentStudent={currentStudent}
         groups={appState.groups}
         activeGroup={activeGroup}
         activeTab={activeTab}
         selectedMemberFilter={selectedMemberFilter}
+        isMobileOpen={isMobileMenuOpen}
+        onCloseMobile={() => setIsMobileMenuOpen(false)}
         onSelectGroup={handleSelectGroup}
         onSelectTab={setActiveTab}
         onSelectMemberFilter={setSelectedMemberFilter}
@@ -611,7 +673,7 @@ export default function App() {
             exit={{ opacity: 0, y: 12, scale: 0.95 }}
             transition={{ duration: 0.2 }}
             role="status"
-            className="fixed bottom-5 right-5 z-40 flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-[#162238] border border-sky-400/40 text-xs font-medium text-slate-100 shadow-xl"
+            className="fixed bottom-4 left-4 right-4 sm:left-auto sm:bottom-5 sm:right-5 z-40 flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-[#162238] border border-sky-400/40 text-xs font-medium text-slate-100 shadow-xl"
           >
             <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
             <span>{toastMessage}</span>
