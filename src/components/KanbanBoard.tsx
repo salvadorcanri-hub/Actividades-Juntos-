@@ -22,20 +22,40 @@ import {
   Copy,
   ShieldCheck,
   AlertCircle,
+  Pencil,
+  MessageSquarePlus,
+  Lock,
+  Trophy,
+  UserMinus,
+  CalendarPlus,
+  Download,
 } from 'lucide-react';
 import {
   Group,
   Task,
   TaskStatus,
+  PROJECT_LIMITS,
+  sanitizeSafeHttpUrl,
   calculateGroupProgress,
   calculateMemberWorkloads,
   evaluateWorkloadEquity,
   formatShortDate,
+  formatExactTimeWithSeconds,
   groupTasksByDeadline,
   getDeadlineBadgeInfo,
+  isGroupCreator,
+  isTaskRejected,
+  canEditTask,
+  getVisibleTaskEditHistory,
+  buildGoogleCalendarUrl,
+  buildTaskIcsContent,
+  buildGroupIcsContent,
 } from '../utils/projectLogic';
+import { StudentAccount } from '../utils/authLogic';
 import { WorkspaceTab } from './LeftSidebar';
 import { RightResourcesPanel } from './RightResourcesPanel';
+import { ActivityTimelinePanel } from './ActivityTimelinePanel';
+import { PerformancePanel } from './PerformancePanel';
 import {
   StudentAvatar,
   GroupCoverBanner,
@@ -43,6 +63,7 @@ import {
 } from './visualAssets';
 
 interface KanbanBoardProps {
+  currentStudent: StudentAccount;
   activeGroup: Group;
   activeTab: WorkspaceTab;
   selectedMemberFilter: string | null;
@@ -52,12 +73,17 @@ interface KanbanBoardProps {
   onOpenAddResourceModal: () => void;
   onAttemptStatusChange: (task: Task, targetStatus: TaskStatus) => void;
   onOpenAttachEvidenceModal: (task: Task) => void;
+  onOpenEditTaskModal: (task: Task) => void;
+  onOpenCoordinatorNoteModal: (task: Task) => void;
+  onOpenTeacherGradeModal: (task: Task) => void;
   onToggleSubtask: (taskId: string, subtaskId: string) => void;
   onAddSubtask: (taskId: string, text: string) => void;
   onDeleteTask: (taskId: string) => void;
   onDeleteResource: (resourceId: string) => void;
   onAddMemberToActiveGroup: (memberName: string) => void;
+  onKickMember: (memberName: string) => void;
   onCopyInviteCode: (code: string) => void;
+  onOpenDissolveGroupModal: () => void;
 }
 
 const COLUMNS: Array<{
@@ -70,6 +96,7 @@ const COLUMNS: Array<{
 ];
 
 export const KanbanBoard: React.FC<KanbanBoardProps> = ({
+  currentStudent,
   activeGroup,
   activeTab,
   selectedMemberFilter,
@@ -79,24 +106,56 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
   onOpenAddResourceModal,
   onAttemptStatusChange,
   onOpenAttachEvidenceModal,
+  onOpenEditTaskModal,
+  onOpenCoordinatorNoteModal,
+  onOpenTeacherGradeModal,
   onToggleSubtask,
   onAddSubtask,
   onDeleteTask,
   onDeleteResource,
   onAddMemberToActiveGroup,
+  onKickMember,
   onCopyInviteCode,
+  onOpenDissolveGroupModal,
 }) => {
   const [expandedTaskIds, setExpandedTaskIds] = useState<
     Record<string, boolean>
-  >({
-    'tsk-ept-3': true,
-  });
+  >({});
+  const [expandedHistoryIds, setExpandedHistoryIds] = useState<
+    Record<string, boolean>
+  >({});
   const [newSubtaskInputs, setNewSubtaskInputs] = useState<
     Record<string, string>
   >({});
   const [newMemberName, setNewMemberName] = useState('');
+  const [confirmKickMember, setConfirmKickMember] = useState<string | null>(
+    null
+  );
   const [mobileStatusTab, setMobileStatusTab] =
     useState<TaskStatus>('Por Hacer');
+
+  const isCreator = isGroupCreator(activeGroup, currentStudent);
+  const creatorName =
+    activeGroup.creatorName || activeGroup.members[0] || 'Creador';
+
+  const downloadIcsFile = (filename: string, content: string) => {
+    const blob = new Blob([content], { type: 'text/calendar;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  const toggleExpandHistory = (taskId: string) => {
+    setExpandedHistoryIds((prev) => ({
+      ...prev,
+      [taskId]: !prev[taskId],
+    }));
+  };
 
   const progress = calculateGroupProgress(activeGroup.tasks);
   const workloads = calculateMemberWorkloads(
@@ -177,7 +236,27 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
             <div className="min-w-0 space-y-1">
               <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-sky-300/90">
-                <span className="font-medium truncate">{activeGroup.course}</span>
+                <span className="font-medium truncate">
+                  {activeGroup.course}
+                </span>
+                <span aria-hidden="true">·</span>
+                <span
+                  data-testid="group-creator-indicator"
+                  className="text-slate-300 truncate"
+                >
+                  Creador: {creatorName}
+                </span>
+                <span aria-hidden="true">·</span>
+                <span
+                  data-testid="current-user-rank"
+                  className={
+                    isCreator
+                      ? 'text-emerald-300 font-medium'
+                      : 'text-slate-400'
+                  }
+                >
+                  {isCreator ? 'Tu rango: Creador' : 'Integrante'}
+                </span>
                 <span aria-hidden="true">·</span>
                 <button
                   type="button"
@@ -313,7 +392,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                 role="tab"
                 aria-selected={activeTab === 'tareas'}
                 onClick={() => onSelectTab('tareas')}
-                className={`inline-flex items-center gap-2 px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all whitespace-nowrap shrink-0 cursor-pointer ${
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all whitespace-nowrap shrink-0 cursor-pointer ${
                   activeTab === 'tareas'
                     ? 'bg-[#182338] text-sky-300 shadow-xs'
                     : 'text-slate-400 hover:text-slate-200'
@@ -328,14 +407,51 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                 role="tab"
                 aria-selected={activeTab === 'entregas'}
                 onClick={() => onSelectTab('entregas')}
-                className={`inline-flex items-center gap-2 px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all whitespace-nowrap shrink-0 cursor-pointer ${
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all whitespace-nowrap shrink-0 cursor-pointer ${
                   activeTab === 'entregas'
                     ? 'bg-[#182338] text-sky-300 shadow-xs'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
                 <Calendar className="w-3.5 h-3.5" />
-                <span>Entregas ({deadlineBuckets.urgentOrSoon.length + deadlineBuckets.upcoming.length})</span>
+                <span>
+                  Entregas (
+                  {deadlineBuckets.urgentOrSoon.length +
+                    deadlineBuckets.upcoming.length}
+                  )
+                </span>
+              </button>
+
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === 'cronologia'}
+                onClick={() => onSelectTab('cronologia')}
+                data-testid="desktop-tab-cronologia"
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all whitespace-nowrap shrink-0 cursor-pointer ${
+                  activeTab === 'cronologia'
+                    ? 'bg-[#182338] text-sky-300 shadow-xs'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Clock className="w-3.5 h-3.5" />
+                <span>Cronología</span>
+              </button>
+
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === 'desempeno'}
+                onClick={() => onSelectTab('desempeno')}
+                data-testid="desktop-tab-desempeno"
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all whitespace-nowrap shrink-0 cursor-pointer ${
+                  activeTab === 'desempeno'
+                    ? 'bg-[#182338] text-sky-300 shadow-xs'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Trophy className="w-3.5 h-3.5" />
+                <span>Desempeño</span>
               </button>
 
               <button
@@ -343,14 +459,14 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                 role="tab"
                 aria-selected={activeTab === 'equipo'}
                 onClick={() => onSelectTab('equipo')}
-                className={`inline-flex items-center gap-2 px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all whitespace-nowrap shrink-0 cursor-pointer ${
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all whitespace-nowrap shrink-0 cursor-pointer ${
                   activeTab === 'equipo'
                     ? 'bg-[#182338] text-sky-300 shadow-xs'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
                 <Users className="w-3.5 h-3.5" />
-                <span>Equipo y Reparto ({activeGroup.members.length})</span>
+                <span>Equipo ({activeGroup.members.length})</span>
               </button>
 
               <button
@@ -358,14 +474,14 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                 role="tab"
                 aria-selected={activeTab === 'recursos'}
                 onClick={() => onSelectTab('recursos')}
-                className={`inline-flex items-center gap-2 px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all whitespace-nowrap shrink-0 cursor-pointer ${
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all whitespace-nowrap shrink-0 cursor-pointer ${
                   activeTab === 'recursos'
                     ? 'bg-[#182338] text-sky-300 shadow-xs'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
                 <Bookmark className="w-3.5 h-3.5" />
-                <span>Recursos Fijos ({activeGroup.resources.length})</span>
+                <span>Recursos ({activeGroup.resources.length})</span>
               </button>
             </div>
 
@@ -511,9 +627,10 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                           </motion.div>
                         ) : (
                           columnTasks.map((task) => {
-                            const hasEvidence = Boolean(
-                              task.evidenceUrl.trim()
+                            const safeEvidenceUrl = sanitizeSafeHttpUrl(
+                              task.evidenceUrl
                             );
+                            const hasEvidence = Boolean(safeEvidenceUrl);
                             const subtasks = task.subtasks || [];
                             const doneSubtasks = subtasks.filter(
                               (s) => s.completed
@@ -529,6 +646,20 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                             );
                             const reviewState =
                               task.evidenceReviewStatus || 'pendiente';
+                            const rejected = isTaskRejected(task);
+                            const canEdit = canEditTask(
+                              activeGroup,
+                              task,
+                              currentStudent
+                            );
+                            const visibleEdits = getVisibleTaskEditHistory(
+                              task,
+                              activeGroup,
+                              currentStudent
+                            );
+                            const isHistoryExpanded = Boolean(
+                              expandedHistoryIds[task.id]
+                            );
 
                             return (
                               <motion.article
@@ -540,21 +671,95 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                                 whileHover={{ y: -2 }}
                                 transition={{ duration: 0.18 }}
                                 data-testid={`task-card-${task.id}`}
-                                className="p-4 rounded-xl bg-[#151F32] border border-slate-800/90 hover:border-sky-500/35 transition-colors space-y-3 shadow-xs"
+                                data-rejected={rejected ? 'true' : 'false'}
+                                className={
+                                  rejected
+                                    ? 'task-rejected-pulse p-4 rounded-xl bg-rose-950/35 border-2 border-rose-500/80 transition-colors space-y-3 shadow-xs'
+                                    : 'p-4 rounded-xl bg-[#151F32] border border-slate-800/90 hover:border-sky-500/35 transition-colors space-y-3 shadow-xs'
+                                }
                               >
-                                {/* 1. Título y botón borrar */}
+                                {/* Alerta visual roja si la entrega fue rechazada (#7) */}
+                                {rejected && (
+                                  <div
+                                    data-testid={`rejected-banner-${task.id}`}
+                                    className="p-2.5 rounded-lg bg-rose-500/15 border border-rose-500/40 flex items-start justify-between gap-2"
+                                  >
+                                    <div className="min-w-0 space-y-0.5">
+                                      <span className="flex items-center gap-1.5 text-[11px] font-bold text-rose-200">
+                                        <AlertCircle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                                        <span>
+                                          Rechazada · requiere corrección
+                                        </span>
+                                      </span>
+                                      {task.evidenceReviewNote && (
+                                        <p className="text-[11px] text-rose-200/90 leading-snug">
+                                          “{task.evidenceReviewNote}”
+                                        </p>
+                                      )}
+                                    </div>
+                                    {canEdit && (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          onOpenEditTaskModal(task)
+                                        }
+                                        className="min-h-[34px] px-2.5 py-1 rounded-md bg-rose-500 hover:bg-rose-400 text-[11px] font-semibold text-white transition-colors shrink-0 cursor-pointer"
+                                      >
+                                        Corregir
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
+
+                                {/* 1. Título y acciones de edición / nota / eliminar */}
                                 <div className="flex items-start justify-between gap-2">
                                   <h3 className="font-display text-sm font-semibold text-slate-100 leading-snug">
                                     {task.title}
                                   </h3>
-                                  <button
-                                    type="button"
-                                    onClick={() => onDeleteTask(task.id)}
-                                    aria-label={`Eliminar tarea ${task.title}`}
-                                    className="text-slate-500 hover:text-rose-400 transition-colors p-0.5 cursor-pointer shrink-0"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
+                                  <div className="flex items-center gap-0.5 shrink-0">
+                                    {canEdit && (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          onOpenEditTaskModal(task)
+                                        }
+                                        aria-label={`Corregir o editar tarea ${task.title}`}
+                                        title="Corregir tarea enviada"
+                                        data-testid={`edit-task-btn-${task.id}`}
+                                        className="p-1.5 rounded-md text-slate-400 hover:text-sky-300 hover:bg-slate-800/70 transition-colors cursor-pointer"
+                                      >
+                                        <Pencil className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
+                                    {isCreator && (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          onOpenCoordinatorNoteModal(task)
+                                        }
+                                        aria-label={`Dejar nota del creador en ${task.title}`}
+                                        title="Dejar nota para el estudiante"
+                                        data-testid={`note-task-btn-${task.id}`}
+                                        className={`p-1.5 rounded-md transition-colors cursor-pointer ${
+                                          task.coordinatorNote
+                                            ? 'text-sky-300 hover:bg-sky-500/15'
+                                            : 'text-slate-400 hover:text-sky-300 hover:bg-slate-800/70'
+                                        }`}
+                                      >
+                                        <MessageSquarePlus className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
+                                    {isCreator && (
+                                      <button
+                                        type="button"
+                                        onClick={() => onDeleteTask(task.id)}
+                                        aria-label={`Eliminar tarea ${task.title}`}
+                                        className="p-1.5 rounded-md text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
+                                  </div>
                                 </div>
 
                                 {/* 2. Avatar + Responsable y Fecha */}
@@ -573,6 +778,22 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                                     <span>{formatShortDate(task.dueDate)}</span>
                                   </span>
                                 </div>
+
+                                {/* Nota del creador para el estudiante (#3) */}
+                                {task.coordinatorNote && (
+                                  <div
+                                    data-testid={`coordinator-note-${task.id}`}
+                                    className="p-2.5 rounded-lg bg-[#0D1526] border border-sky-500/25 space-y-0.5"
+                                  >
+                                    <span className="text-[10px] font-semibold text-sky-300 block">
+                                      Nota de{' '}
+                                      {task.coordinatorNoteBy || creatorName}
+                                    </span>
+                                    <p className="text-[11px] text-slate-200 leading-snug">
+                                      {task.coordinatorNote}
+                                    </p>
+                                  </div>
+                                )}
 
                                 {/* 3. Subtareas / Checklist Rápida */}
                                 <div className="pt-0.5">
@@ -661,6 +882,9 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                                           >
                                             <input
                                               type="text"
+                                              maxLength={
+                                                PROJECT_LIMITS.SUBTASK_MAX
+                                              }
                                               value={
                                                 newSubtaskInputs[task.id] || ''
                                               }
@@ -687,19 +911,76 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                                   </AnimatePresence>
                                 </div>
 
-                                {/* Nota de revisión si existe */}
-                                {hasEvidence && task.evidenceReviewNote && (
-                                  <p className="text-[11px] text-slate-400 italic truncate">
-                                    “{task.evidenceReviewNote}”
-                                  </p>
+                                {/* Historial Privado de Modificaciones (#4: solo visible al editor y al creador) */}
+                                {visibleEdits.length > 0 && (
+                                  <div
+                                    data-testid={`private-history-toggle-${task.id}`}
+                                    className="pt-1"
+                                  >
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        toggleExpandHistory(task.id)
+                                      }
+                                      className="inline-flex items-center gap-1.5 text-[11px] font-medium text-sky-300/90 hover:text-sky-200 cursor-pointer"
+                                    >
+                                      <Lock className="w-3 h-3 shrink-0" />
+                                      <span>
+                                        Historial privado ({visibleEdits.length}
+                                        )
+                                      </span>
+                                      {isHistoryExpanded ? (
+                                        <ChevronUp className="w-3 h-3" />
+                                      ) : (
+                                        <ChevronDown className="w-3 h-3" />
+                                      )}
+                                    </button>
+                                    {isHistoryExpanded && (
+                                      <div className="mt-2 p-2.5 rounded-lg bg-[#0B0F17] border border-slate-800 space-y-2">
+                                        <span className="text-[10px] text-slate-500 block">
+                                          Solo visible para quien editó y el
+                                          creador del grupo
+                                        </span>
+                                        {visibleEdits.slice(0, 4).map((rec) => (
+                                          <div
+                                            key={rec.id}
+                                            className="text-[11px] space-y-0.5 border-t border-slate-800/70 pt-1.5 first:border-t-0 first:pt-0"
+                                          >
+                                            <div className="flex items-center justify-between gap-2">
+                                              <span className="font-medium text-slate-200 truncate">
+                                                {rec.editorName}
+                                              </span>
+                                              <span className="font-mono text-[10px] tabular-nums text-sky-300 shrink-0">
+                                                {formatExactTimeWithSeconds(
+                                                  rec.editedAt
+                                                )}
+                                              </span>
+                                            </div>
+                                            <p className="text-[10px] text-slate-400 leading-snug">
+                                              {rec.summary}
+                                            </p>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
                                 )}
 
-                                {/* 4. Botón de Evidencia / Revisión y Cambio de Columna */}
+                                {/* Nota de revisión si existe y no está ya mostrada en el banner rojo */}
+                                {!rejected &&
+                                  hasEvidence &&
+                                  task.evidenceReviewNote && (
+                                    <p className="text-[11px] text-slate-400 italic truncate">
+                                      “{task.evidenceReviewNote}”
+                                    </p>
+                                  )}
+
+                                {/* 4. Botón de Evidencia / Revisión y Cambio de Columna (solo creador) */}
                                 <div className="pt-2.5 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2">
-                                  {hasEvidence ? (
+                                  {safeEvidenceUrl ? (
                                     <div className="flex items-center gap-1.5 min-w-0">
                                       <a
-                                        href={task.evidenceUrl}
+                                        href={safeEvidenceUrl}
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         className="inline-flex items-center gap-1 text-xs font-medium text-emerald-400 hover:text-emerald-300"
@@ -713,29 +994,37 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                                           onOpenAttachEvidenceModal(task)
                                         }
                                         aria-label={`Revisar o cambiar evidencia de ${task.title}`}
-                                        title="Revisar o cambiar enlace de evidencia"
+                                        title={
+                                          isCreator
+                                            ? 'Aprobar, rechazar o cambiar evidencia'
+                                            : 'Ver estado o cambiar evidencia'
+                                        }
                                         className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] transition-colors cursor-pointer shrink-0 ${
                                           reviewState === 'verificada'
                                             ? 'text-emerald-300 hover:bg-emerald-500/15'
-                                            : reviewState === 'observada'
-                                            ? 'text-amber-300 hover:bg-amber-500/15'
+                                            : rejected
+                                            ? 'text-rose-300 hover:bg-rose-500/15'
                                             : 'text-sky-300 hover:bg-sky-500/15'
                                         }`}
                                       >
                                         {reviewState === 'verificada' ? (
                                           <>
                                             <ShieldCheck className="w-3 h-3" />
-                                            <span>Verificada</span>
+                                            <span>Aprobada</span>
                                           </>
-                                        ) : reviewState === 'observada' ? (
+                                        ) : rejected ? (
                                           <>
                                             <AlertCircle className="w-3 h-3" />
-                                            <span>Corregir</span>
+                                            <span>Rechazada</span>
                                           </>
                                         ) : (
                                           <>
                                             <Link2 className="w-3 h-3" />
-                                            <span>Revisar</span>
+                                            <span>
+                                              {isCreator
+                                                ? 'Revisar'
+                                                : 'Cambiar'}
+                                            </span>
                                           </>
                                         )}
                                       </button>
@@ -753,38 +1042,47 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                                     </button>
                                   )}
 
-                                  <div className="flex items-center gap-1">
-                                    {(
-                                      [
-                                        'Por Hacer',
-                                        'En Progreso',
-                                        'Terminado',
-                                      ] as TaskStatus[]
-                                    )
-                                      .filter((st) => st !== task.status)
-                                      .map((targetSt) => (
-                                        <button
-                                          key={targetSt}
-                                          type="button"
-                                          onClick={() =>
-                                            onAttemptStatusChange(
-                                              task,
-                                              targetSt
-                                            )
-                                          }
-                                          aria-label={`Mover "${task.title}" a ${targetSt}`}
-                                          className={`px-2 py-1 text-[11px] font-medium rounded-md transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
-                                            targetSt === 'Terminado'
-                                              ? hasEvidence
-                                                ? 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30'
-                                                : 'bg-amber-500/15 text-amber-300 hover:bg-amber-500/25'
-                                              : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                                          }`}
-                                        >
-                                          {targetSt}
-                                        </button>
-                                      ))}
-                                  </div>
+                                  {isCreator ? (
+                                    <div className="flex items-center gap-1">
+                                      {(
+                                        [
+                                          'Por Hacer',
+                                          'En Progreso',
+                                          'Terminado',
+                                        ] as TaskStatus[]
+                                      )
+                                        .filter((st) => st !== task.status)
+                                        .map((targetSt) => (
+                                          <button
+                                            key={targetSt}
+                                            type="button"
+                                            onClick={() =>
+                                              onAttemptStatusChange(
+                                                task,
+                                                targetSt
+                                              )
+                                            }
+                                            aria-label={`Mover "${task.title}" a ${targetSt}`}
+                                            className={`min-h-[32px] px-2 py-1 text-[11px] font-medium rounded-md transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                                              targetSt === 'Terminado'
+                                                ? hasEvidence
+                                                  ? 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30'
+                                                  : 'bg-amber-500/15 text-amber-300 hover:bg-amber-500/25'
+                                                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                                            }`}
+                                          >
+                                            {targetSt}
+                                          </button>
+                                        ))}
+                                    </div>
+                                  ) : (
+                                    <span
+                                      data-testid={`member-status-locked-${task.id}`}
+                                      className="text-[10px] text-slate-500"
+                                    >
+                                      Solo el creador cambia estado
+                                    </span>
+                                  )}
                                 </div>
                               </motion.article>
                             );
@@ -810,6 +1108,37 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
               data-testid="calendar-entregas-view"
               className="max-w-4xl mx-auto space-y-6"
             >
+              {/* Barra de Exportación al Calendario del Celular (#8) */}
+              <div className="p-4 rounded-2xl bg-[#111827]/90 border border-sky-500/25 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="space-y-0.5 min-w-0">
+                  <h2 className="font-display text-sm font-bold text-slate-100">
+                    Guardar fechas en el calendario de tu celular
+                  </h2>
+                  <p className="text-xs text-slate-400">
+                    Compatible con Google Calendar, Apple y Samsung, con
+                    recordatorio automático 1 día antes.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  data-testid="export-group-ics-btn"
+                  onClick={() => {
+                    const slug = activeGroup.name
+                      .toLowerCase()
+                      .replace(/[^a-z0-9]+/g, '-')
+                      .replace(/(^-|-$)/g, '');
+                    downloadIcsFile(
+                      `entregas-${slug || 'grupo'}.ics`,
+                      buildGroupIcsContent(activeGroup)
+                    );
+                  }}
+                  className="min-h-[44px] w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-sky-400 hover:bg-sky-300 text-xs font-semibold text-slate-950 transition-colors cursor-pointer shrink-0 active:scale-95"
+                >
+                  <Download className="w-4 h-4 shrink-0" />
+                  <span>Guardar todas (.ics)</span>
+                </button>
+              </div>
+
               {/* Resumen Cronológico */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="p-4 rounded-2xl bg-[#111827]/90 border border-slate-800 flex items-center justify-between">
@@ -900,16 +1229,27 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                           task.dueDate,
                           task.status
                         );
-                        const hasEvidence = Boolean(task.evidenceUrl.trim());
+                        const hasEvidence = Boolean(
+                          sanitizeSafeHttpUrl(task.evidenceUrl)
+                        );
                         const reviewState =
                           task.evidenceReviewStatus || 'pendiente';
+                        const rejected = isTaskRejected(task);
+                        const gcalUrl = buildGoogleCalendarUrl(
+                          task,
+                          activeGroup
+                        );
 
                         return (
                           <div
                             key={task.id}
-                            className="px-4 sm:px-5 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 hover:bg-[#141E30]/60 transition-colors"
+                            className={`px-4 sm:px-5 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 transition-colors ${
+                              rejected
+                                ? 'bg-rose-950/25 hover:bg-rose-950/35'
+                                : 'hover:bg-[#141E30]/60'
+                            }`}
                           >
-                            <div className="flex items-center gap-4 min-w-0 flex-1">
+                            <div className="flex items-center gap-3.5 min-w-0 flex-1">
                               {/* Fecha Destacada */}
                               <div className="w-16 text-center py-1.5 px-2 rounded-xl bg-[#152036] border border-slate-700/70 shrink-0">
                                 <span className="font-mono text-xs font-bold text-sky-300 block tabular-nums">
@@ -933,7 +1273,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                                 <h3 className="font-display text-sm font-semibold text-slate-100 truncate">
                                   {task.title}
                                 </h3>
-                                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
+                                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-400">
                                   <span className="inline-flex items-center gap-1.5 text-slate-300">
                                     <StudentAvatar
                                       name={task.assignee}
@@ -943,49 +1283,85 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                                   </span>
                                   <span aria-hidden="true">·</span>
                                   <span>{task.status}</span>
-                                  {hasEvidence && (
+                                  {rejected ? (
                                     <>
                                       <span aria-hidden="true">·</span>
-                                      <span
-                                        className={
-                                          reviewState === 'verificada'
-                                            ? 'text-emerald-400 font-medium'
-                                            : reviewState === 'observada'
-                                            ? 'text-amber-300 font-medium'
-                                            : 'text-sky-300'
-                                        }
-                                      >
-                                        {reviewState === 'verificada'
-                                          ? 'Evidencia verificada'
-                                          : reviewState === 'observada'
-                                          ? 'Requiere corrección'
-                                          : 'Evidencia por revisar'}
+                                      <span className="text-rose-300 font-medium">
+                                        Rechazada
                                       </span>
                                     </>
+                                  ) : (
+                                    hasEvidence && (
+                                      <>
+                                        <span aria-hidden="true">·</span>
+                                        <span
+                                          className={
+                                            reviewState === 'verificada'
+                                              ? 'text-emerald-400 font-medium'
+                                              : 'text-sky-300'
+                                          }
+                                        >
+                                          {reviewState === 'verificada'
+                                            ? 'Aprobada'
+                                            : 'Por revisar'}
+                                        </span>
+                                      </>
+                                    )
                                   )}
                                 </div>
                               </div>
                             </div>
 
-                            <div className="flex items-center gap-2 shrink-0">
+                            {/* Acciones optimizadas para pulgar en celular (#8) */}
+                            <div className="flex flex-wrap items-center gap-2 shrink-0">
+                              {task.status !== 'Terminado' && (
+                                <>
+                                  <a
+                                    href={gcalUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    data-testid={`gcal-link-${task.id}`}
+                                    className="min-h-[44px] sm:min-h-[34px] flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3 py-2 sm:py-1.5 rounded-lg bg-[#162238] hover:bg-[#1D2D49] border border-sky-500/30 text-xs font-medium text-sky-300 transition-colors whitespace-nowrap"
+                                  >
+                                    <CalendarPlus className="w-3.5 h-3.5 shrink-0" />
+                                    <span>Google Calendar</span>
+                                  </a>
+                                  <button
+                                    type="button"
+                                    data-testid={`ics-btn-${task.id}`}
+                                    onClick={() =>
+                                      downloadIcsFile(
+                                        `entrega-${task.id}.ics`,
+                                        buildTaskIcsContent(task, activeGroup)
+                                      )
+                                    }
+                                    className="min-h-[44px] sm:min-h-[34px] inline-flex items-center justify-center gap-1 px-3 py-2 sm:py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 text-xs font-medium text-slate-200 transition-colors cursor-pointer whitespace-nowrap"
+                                  >
+                                    <Download className="w-3.5 h-3.5 shrink-0" />
+                                    <span>.ics</span>
+                                  </button>
+                                </>
+                              )}
                               <button
                                 type="button"
                                 onClick={() =>
                                   onOpenAttachEvidenceModal(task)
                                 }
-                                className="px-3 py-1.5 rounded-lg bg-[#162238] hover:bg-[#1D2D49] border border-slate-700 text-xs font-medium text-sky-300 transition-colors cursor-pointer"
+                                className="min-h-[44px] sm:min-h-[34px] px-3 py-2 sm:py-1.5 rounded-lg bg-[#162238] hover:bg-[#1D2D49] border border-slate-700 text-xs font-medium text-slate-200 transition-colors cursor-pointer whitespace-nowrap"
                               >
                                 {hasEvidence
-                                  ? 'Revisar evidencia'
-                                  : '+ Adjuntar evidencia'}
+                                  ? isCreator
+                                    ? 'Revisar'
+                                    : 'Ver evidencia'
+                                  : '+ Evidencia'}
                               </button>
-                              {task.status !== 'Terminado' && (
+                              {isCreator && task.status !== 'Terminado' && (
                                 <button
                                   type="button"
                                   onClick={() =>
                                     onAttemptStatusChange(task, 'Terminado')
                                   }
-                                  className="px-3 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-xs font-semibold text-emerald-300 transition-colors cursor-pointer"
+                                  className="min-h-[44px] sm:min-h-[34px] px-3 py-2 sm:py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-xs font-semibold text-emerald-300 transition-colors cursor-pointer whitespace-nowrap"
                                 >
                                   Terminar
                                 </button>
@@ -1001,7 +1377,37 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
             </motion.div>
           )}
 
-          {/* PESTAÑA 3: EQUIPO Y REPARTO DE TAREAS CON RETRATOS */}
+          {/* PESTAÑA 3 (#5): CRONOLOGÍA DE FECHAS Y HORAS DEL PROYECTO */}
+          {activeTab === 'cronologia' && (
+            <motion.div
+              key="tab-cronologia"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.18 }}
+            >
+              <ActivityTimelinePanel activeGroup={activeGroup} />
+            </motion.div>
+          )}
+
+          {/* PESTAÑA 4 (#6): DESEMPEÑO, PUNTUALIDAD Y CALIFICACIONES DEL PROFESOR */}
+          {activeTab === 'desempeno' && (
+            <motion.div
+              key="tab-desempeno"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.18 }}
+            >
+              <PerformancePanel
+                activeGroup={activeGroup}
+                isCreator={isCreator}
+                onOpenTeacherGradeModal={onOpenTeacherGradeModal}
+              />
+            </motion.div>
+          )}
+
+          {/* PESTAÑA 5: EQUIPO Y REPARTO DE TAREAS CON CONTROL DEL CREADOR (#3) */}
           {activeTab === 'equipo' && (
             <motion.div
               key="tab-equipo"
@@ -1023,8 +1429,10 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                       {equity.label}
                     </h2>
                     <p className="text-xs text-slate-400">
-                      Revisa cuántas tareas tiene cada integrante para que todos
-                      colaboren por igual.
+                      Creador del grupo:{' '}
+                      <strong className="text-sky-300">{creatorName}</strong> ·
+                      Solo el creador puede mover estados, aprobar entregas o
+                      expulsar integrantes.
                     </p>
                   </div>
                 </div>
@@ -1032,82 +1440,175 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {workloads.map((w) => (
-                  <motion.div
-                    key={w.member}
-                    whileHover={{ y: -2 }}
-                    className="p-4 rounded-2xl bg-[#131C2E] border border-slate-800/90 space-y-3.5"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <StudentAvatar name={w.member} size="lg" />
-                        <div className="min-w-0">
-                          <span className="font-display font-semibold text-base text-slate-100 block truncate">
-                            {w.member}
-                          </span>
-                          <span className="text-xs text-slate-400 block">
-                            Integrante del equipo
-                          </span>
+                {workloads.map((w) => {
+                  const isMemberCreator =
+                    w.member.trim().toLowerCase() ===
+                    creatorName.trim().toLowerCase();
+                  const isConfirmingKick = confirmKickMember === w.member;
+
+                  return (
+                    <motion.div
+                      key={w.member}
+                      whileHover={{ y: -2 }}
+                      className="p-4 rounded-2xl bg-[#131C2E] border border-slate-800/90 space-y-3.5"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <StudentAvatar name={w.member} size="lg" />
+                          <div className="min-w-0">
+                            <span className="font-display font-semibold text-base text-slate-100 block truncate">
+                              {w.member}
+                            </span>
+                            <span
+                              className={`text-xs block ${
+                                isMemberCreator
+                                  ? 'text-sky-300 font-medium'
+                                  : 'text-slate-400'
+                              }`}
+                            >
+                              {isMemberCreator
+                                ? 'Creador del grupo · Rango máximo'
+                                : 'Integrante del equipo'}
+                            </span>
+                          </div>
                         </div>
+                        <span className="font-mono text-sm font-bold text-sky-400 tabular-nums shrink-0">
+                          {w.totalAssigned}{' '}
+                          {w.totalAssigned === 1 ? 'tarea' : 'tareas'}
+                        </span>
                       </div>
-                      <span className="font-mono text-sm font-bold text-sky-400 tabular-nums shrink-0">
-                        {w.totalAssigned}{' '}
-                        {w.totalAssigned === 1 ? 'tarea' : 'tareas'}
-                      </span>
-                    </div>
 
-                    <div className="w-full h-1.5 bg-slate-900 rounded-full overflow-hidden">
-                      <motion.div
-                        initial={false}
-                        animate={{ width: `${w.sharePercentage}%` }}
-                        transition={{ duration: 0.35 }}
-                        className="h-full bg-sky-400"
-                      />
-                    </div>
+                      <div className="w-full h-1.5 bg-slate-900 rounded-full overflow-hidden">
+                        <motion.div
+                          initial={false}
+                          animate={{ width: `${w.sharePercentage}%` }}
+                          transition={{ duration: 0.35 }}
+                          className="h-full bg-sky-400"
+                        />
+                      </div>
 
-                    <div className="flex items-center justify-between gap-2 text-xs text-slate-400 font-mono tabular-nums whitespace-nowrap">
-                      <span>
-                        {w.completed} listas · {w.inProgress} en curso ·{' '}
-                        {w.todo} pend.
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          onSelectMemberFilter(w.member);
-                          onSelectTab('tareas');
-                        }}
-                        className="text-sky-400 hover:underline font-sans cursor-pointer shrink-0 whitespace-nowrap"
-                      >
-                        Ver tareas →
-                      </button>
-                    </div>
-                  </motion.div>
-                ))}
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400 font-mono tabular-nums">
+                        <span>
+                          {w.completed} listas · {w.inProgress} en curso ·{' '}
+                          {w.todo} pend.
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onSelectMemberFilter(w.member);
+                            onSelectTab('tareas');
+                          }}
+                          className="text-sky-400 hover:underline font-sans cursor-pointer shrink-0 whitespace-nowrap"
+                        >
+                          Ver tareas →
+                        </button>
+                      </div>
+
+                      {/* Expulsar estudiante (permiso exclusivo del creador, #3) */}
+                      {isCreator && !isMemberCreator && (
+                        <div className="pt-2.5 border-t border-slate-800/80">
+                          {isConfirmingKick ? (
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[11px] text-rose-300">
+                                ¿Expulsar del grupo?
+                              </span>
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => setConfirmKickMember(null)}
+                                  className="min-h-[36px] px-2.5 py-1 rounded-lg text-[11px] text-slate-300 hover:text-white bg-slate-800 cursor-pointer"
+                                >
+                                  Cancelar
+                                </button>
+                                <button
+                                  type="button"
+                                  data-testid={`confirm-kick-${w.member}`}
+                                  onClick={() => {
+                                    onKickMember(w.member);
+                                    setConfirmKickMember(null);
+                                  }}
+                                  className="min-h-[36px] px-2.5 py-1 rounded-lg text-[11px] font-semibold text-white bg-rose-500 hover:bg-rose-400 cursor-pointer"
+                                >
+                                  Confirmar
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              data-testid={`kick-member-btn-${w.member}`}
+                              onClick={() => setConfirmKickMember(w.member)}
+                              className="min-h-[38px] w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/25 text-xs font-medium text-rose-300 transition-colors cursor-pointer"
+                            >
+                              <UserMinus className="w-3.5 h-3.5 shrink-0" />
+                              <span>Expulsar del grupo</span>
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </motion.div>
+                  );
+                })}
               </div>
 
-              <form
-                onSubmit={handleAddMemberSubmit}
-                className="p-4 rounded-2xl bg-[#0F1623] border border-slate-800 flex flex-wrap items-center gap-3"
-              >
-                <UserPlus className="w-4 h-4 text-sky-400 shrink-0" />
-                <label htmlFor="add-team-member-input" className="sr-only">
-                  Nombre del nuevo integrante
-                </label>
-                <input
-                  id="add-team-member-input"
-                  type="text"
-                  value={newMemberName}
-                  onChange={(e) => setNewMemberName(e.target.value)}
-                  placeholder="Agregar otro integrante al grupo (Nombre y apellido)..."
-                  className="flex-1 min-w-[200px] px-3 py-2 text-xs bg-[#0B0F17] border border-slate-800 rounded-lg text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-sky-500"
-                />
-                <button
-                  type="submit"
-                  className="px-4 py-2 text-xs font-semibold text-slate-950 bg-sky-400 hover:bg-sky-300 rounded-lg transition-colors cursor-pointer shrink-0"
+              {isCreator ? (
+                <form
+                  onSubmit={handleAddMemberSubmit}
+                  className="p-4 rounded-2xl bg-[#0F1623] border border-slate-800 flex flex-wrap items-center gap-3"
                 >
-                  + Añadir Integrante
-                </button>
-              </form>
+                  <UserPlus className="w-4 h-4 text-sky-400 shrink-0" />
+                  <label htmlFor="add-team-member-input" className="sr-only">
+                    Nombre del nuevo integrante
+                  </label>
+                  <input
+                    id="add-team-member-input"
+                    type="text"
+                    maxLength={PROJECT_LIMITS.MEMBER_NAME_MAX}
+                    value={newMemberName}
+                    onChange={(e) => setNewMemberName(e.target.value)}
+                    placeholder="Agregar otro integrante al grupo (Nombre y apellido)..."
+                    className="flex-1 min-w-[200px] px-3 py-2.5 text-xs bg-[#0B0F17] border border-slate-800 rounded-lg text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-sky-500"
+                  />
+                  <button
+                    type="submit"
+                    className="min-h-[42px] px-4 py-2 text-xs font-semibold text-slate-950 bg-sky-400 hover:bg-sky-300 rounded-lg transition-colors cursor-pointer shrink-0"
+                  >
+                    + Añadir Integrante
+                  </button>
+                </form>
+              ) : (
+                <div className="p-4 rounded-2xl bg-[#0F1623]/70 border border-slate-800/80 text-xs text-slate-400 text-center">
+                  Solo el creador del grupo ({creatorName}) puede añadir o
+                  expulsar integrantes.
+                </div>
+              )}
+
+              {/* Zona de Disolución del Grupo (exclusivo del creador) */}
+              {isCreator && (
+                <div
+                  data-testid="dissolve-group-zone"
+                  className="p-4 sm:p-5 rounded-2xl bg-rose-950/20 border border-rose-500/35 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                >
+                  <div className="space-y-1 min-w-0">
+                    <h3 className="font-display text-sm font-bold text-rose-200 flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+                      <span>Disolver grupo</span>
+                    </h3>
+                    <p className="text-xs text-slate-400 leading-relaxed">
+                      Elimina permanentemente este grupo, todas sus tareas, evidencias y el código de invitación para todo el equipo. Solo disponible para ti como creador.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    data-testid="dissolve-group-btn"
+                    onClick={onOpenDissolveGroupModal}
+                    className="min-h-[44px] px-4 py-2 rounded-xl bg-rose-600/20 hover:bg-rose-600/35 border border-rose-500/50 text-xs font-semibold text-rose-200 hover:text-white transition-colors inline-flex items-center justify-center gap-2 cursor-pointer shrink-0 whitespace-nowrap"
+                  >
+                    <Trash2 className="w-4 h-4 shrink-0" />
+                    <span>Disolver grupo</span>
+                  </button>
+                </div>
+              )}
             </motion.div>
           )}
 

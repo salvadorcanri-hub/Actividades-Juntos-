@@ -18,18 +18,36 @@
           "minLength": 1,
           "maxLength": 80
         },
+        "gradeLevel": {
+          "type": "string",
+          "description": "Student grade level from 1 to 5.",
+          "enum": ["1", "2", "3", "4", "5"],
+          "minLength": 1,
+          "maxLength": 2
+        },
+        "sectionLetter": {
+          "type": "string",
+          "description": "Student section letter from A to C.",
+          "enum": ["A", "B", "C"],
+          "minLength": 1,
+          "maxLength": 2
+        },
         "gradeCourse": {
           "type": "string",
-          "description": "Student grade or school section.",
+          "description": "Formatted student grade and school section.",
           "minLength": 1,
           "maxLength": 80
         },
         "activeGroupId": {
           "type": "string",
-          "description": "Currently selected group ID for this student.",
-          "minLength": 1,
+          "description": "Currently selected group ID for this student (empty string when no groups exist).",
+          "minLength": 0,
           "maxLength": 128,
-          "pattern": "^[a-zA-Z0-9_\\-]+$"
+          "pattern": "^(|[a-zA-Z0-9_\\-]+)$"
+        },
+        "profileCompleted": {
+          "type": "boolean",
+          "description": "Indicates whether the student has completed initial grade/section setup."
         },
         "createdAt": {
           "type": "string",
@@ -45,8 +63,11 @@
       "required": [
         "ownerId",
         "displayName",
+        "gradeLevel",
+        "sectionLetter",
         "gradeCourse",
         "activeGroupId",
+        "profileCompleted",
         "createdAt",
         "updatedAt"
       ]
@@ -83,17 +104,23 @@
       },
       "required": ["ownerId", "email", "createdAt", "updatedAt"]
     },
-    "StudentGroupDoc": {
-      "title": "StudentGroupDoc",
-      "description": "Isolated course project group container owned by a student.",
+    "SharedGroupDoc": {
+      "title": "SharedGroupDoc",
+      "description": "Collaborative course project group shared across multiple authenticated students.",
       "type": "object",
       "properties": {
-        "ownerId": {
+        "creatorId": {
           "type": "string",
-          "description": "UID of the student owner.",
+          "description": "Immutable UID of the student who created the group (highest rank).",
           "minLength": 1,
           "maxLength": 128,
           "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "creatorName": {
+          "type": "string",
+          "description": "Display name of the group creator.",
+          "minLength": 1,
+          "maxLength": 80
         },
         "name": {
           "type": "string",
@@ -104,6 +131,87 @@
         "course": {
           "type": "string",
           "description": "Course or subject name.",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "inviteCode": {
+          "type": "string",
+          "description": "Unique uppercase invite code used by teammates to join.",
+          "minLength": 3,
+          "maxLength": 12,
+          "pattern": "^[A-Z0-9\\-]+$"
+        },
+        "coverUrl": {
+          "type": "string",
+          "description": "Optional cover image path or safe HTTPS URL.",
+          "minLength": 0,
+          "maxLength": 500
+        },
+        "memberIds": {
+          "type": "array",
+          "description": "Bounded list (max 20) of authenticated member UIDs who have access to this group."
+        },
+        "members": {
+          "type": "array",
+          "description": "Bounded list (max 20) of member display names for workload and assignment."
+        },
+        "activityLog": {
+          "type": "array",
+          "description": "Bounded chronological project activity log entries (max 80)."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation server timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last update server timestamp."
+        }
+      },
+      "required": [
+        "creatorId",
+        "creatorName",
+        "name",
+        "course",
+        "inviteCode",
+        "coverUrl",
+        "memberIds",
+        "members",
+        "activityLog",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "GroupInviteDoc": {
+      "title": "GroupInviteDoc",
+      "description": "Lookup index mapping an exact invite code to its shared group ID.",
+      "type": "object",
+      "properties": {
+        "groupId": {
+          "type": "string",
+          "description": "Target shared group document ID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "creatorId": {
+          "type": "string",
+          "description": "UID of the group creator.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "groupName": {
+          "type": "string",
+          "description": "Name of the target group.",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "course": {
+          "type": "string",
+          "description": "Course name of the target group.",
           "minLength": 1,
           "maxLength": 100
         },
@@ -118,23 +226,30 @@
           "description": "Last update server timestamp."
         }
       },
-      "required": ["ownerId", "name", "course", "createdAt", "updatedAt"]
+      "required": [
+        "groupId",
+        "creatorId",
+        "groupName",
+        "course",
+        "createdAt",
+        "updatedAt"
+      ]
     },
-    "StudentTaskDoc": {
-      "title": "StudentTaskDoc",
-      "description": "Task card inside a student course group with Anti-Paseos evidence validation.",
+    "SharedTaskDoc": {
+      "title": "SharedTaskDoc",
+      "description": "Collaborative task card inside a shared group with Anti-Paseos validation, creator review, notes, grades, timestamps, subtasks, and private edit history.",
       "type": "object",
       "properties": {
-        "ownerId": {
+        "groupId": {
           "type": "string",
-          "description": "UID of the student owner.",
+          "description": "Parent shared group ID.",
           "minLength": 1,
           "maxLength": 128,
           "pattern": "^[a-zA-Z0-9_\\-]+$"
         },
-        "groupId": {
+        "createdBy": {
           "type": "string",
-          "description": "Parent group ID.",
+          "description": "UID of the student who created the task.",
           "minLength": 1,
           "maxLength": 128,
           "pattern": "^[a-zA-Z0-9_\\-]+$"
@@ -145,15 +260,21 @@
           "minLength": 1,
           "maxLength": 160
         },
+        "description": {
+          "type": "string",
+          "description": "Optional task description.",
+          "minLength": 0,
+          "maxLength": 300
+        },
         "assignee": {
           "type": "string",
-          "description": "Assigned team member name.",
+          "description": "Assigned team member display name.",
           "minLength": 1,
           "maxLength": 80
         },
         "dueDate": {
           "type": "string",
-          "description": "Due date string.",
+          "description": "Due date ISO string (YYYY-MM-DD).",
           "minLength": 1,
           "maxLength": 30
         },
@@ -173,9 +294,71 @@
         },
         "evidenceUrl": {
           "type": "string",
-          "description": "Mandatory evidence link when kanbanColumn is Terminado.",
+          "description": "Mandatory HTTP(S) evidence link when kanbanColumn is Terminado.",
           "minLength": 0,
-          "maxLength": 500
+          "maxLength": 500,
+          "pattern": "^(|https?://[^\\s]+)$"
+        },
+        "evidenceReviewStatus": {
+          "type": "string",
+          "description": "Review status controlled by the group creator.",
+          "enum": ["", "pendiente", "verificada", "observada", "rechazada"],
+          "minLength": 0,
+          "maxLength": 20
+        },
+        "evidenceReviewNote": {
+          "type": "string",
+          "description": "Review note left by the group creator.",
+          "minLength": 0,
+          "maxLength": 120
+        },
+        "coordinatorNote": {
+          "type": "string",
+          "description": "Direct guidance note from the group creator.",
+          "minLength": 0,
+          "maxLength": 240
+        },
+        "coordinatorNoteBy": {
+          "type": "string",
+          "description": "Creator display name who wrote the note.",
+          "minLength": 0,
+          "maxLength": 80
+        },
+        "coordinatorNoteUpdatedAt": {
+          "type": "string",
+          "description": "ISO timestamp when coordinator note was updated.",
+          "minLength": 0,
+          "maxLength": 40
+        },
+        "teacherRating": {
+          "type": "number",
+          "description": "Teacher grade (0-20), or -1 when ungraded."
+        },
+        "teacherComment": {
+          "type": "string",
+          "description": "Teacher feedback comment.",
+          "minLength": 0,
+          "maxLength": 200
+        },
+        "startedAt": {
+          "type": "string",
+          "description": "ISO timestamp when task entered En Progreso.",
+          "minLength": 0,
+          "maxLength": 40
+        },
+        "completedAt": {
+          "type": "string",
+          "description": "ISO timestamp when task was completed.",
+          "minLength": 0,
+          "maxLength": 40
+        },
+        "subtasks": {
+          "type": "array",
+          "description": "Bounded list (max 25) of subtask checklist items."
+        },
+        "editHistory": {
+          "type": "array",
+          "description": "Bounded list (max 40) of task correction audit entries."
         },
         "createdAt": {
           "type": "string",
@@ -189,33 +372,45 @@
         }
       },
       "required": [
-        "ownerId",
         "groupId",
+        "createdBy",
         "title",
+        "description",
         "assignee",
         "dueDate",
         "priority",
         "kanbanColumn",
         "evidenceUrl",
+        "evidenceReviewStatus",
+        "evidenceReviewNote",
+        "coordinatorNote",
+        "coordinatorNoteBy",
+        "coordinatorNoteUpdatedAt",
+        "teacherRating",
+        "teacherComment",
+        "startedAt",
+        "completedAt",
+        "subtasks",
+        "editHistory",
         "createdAt",
         "updatedAt"
       ]
     },
-    "StudentResourceDoc": {
-      "title": "StudentResourceDoc",
-      "description": "Anchored course resource link inside a student group.",
+    "SharedResourceDoc": {
+      "title": "SharedResourceDoc",
+      "description": "Anchored course resource link inside a shared group.",
       "type": "object",
       "properties": {
-        "ownerId": {
+        "groupId": {
           "type": "string",
-          "description": "UID of the student owner.",
+          "description": "Parent shared group ID.",
           "minLength": 1,
           "maxLength": 128,
           "pattern": "^[a-zA-Z0-9_\\-]+$"
         },
-        "groupId": {
+        "createdBy": {
           "type": "string",
-          "description": "Parent group ID.",
+          "description": "UID of the student who pinned the resource.",
           "minLength": 1,
           "maxLength": 128,
           "pattern": "^[a-zA-Z0-9_\\-]+$"
@@ -234,9 +429,10 @@
         },
         "url": {
           "type": "string",
-          "description": "Resource URL.",
+          "description": "Safe HTTP(S) resource URL.",
           "minLength": 1,
-          "maxLength": 500
+          "maxLength": 500,
+          "pattern": "^https?://[^\\s]+$"
         },
         "createdAt": {
           "type": "string",
@@ -250,8 +446,8 @@
         }
       },
       "required": [
-        "ownerId",
         "groupId",
+        "createdBy",
         "title",
         "category",
         "url",
@@ -269,17 +465,21 @@
       "schema": { "$ref": "#/entities/UserPrivateInfo" },
       "description": "Split collection isolating student PII (email)."
     },
-    "/users/{userId}/groups/{groupId}": {
-      "schema": { "$ref": "#/entities/StudentGroupDoc" },
-      "description": "Course groups belonging to a student."
+    "/groups/{groupId}": {
+      "schema": { "$ref": "#/entities/SharedGroupDoc" },
+      "description": "Collaborative course project groups shared across students."
     },
-    "/users/{userId}/groups/{groupId}/tasks/{taskId}": {
-      "schema": { "$ref": "#/entities/StudentTaskDoc" },
-      "description": "Tasks belonging to a specific student course group."
+    "/groupInvites/{inviteCode}": {
+      "schema": { "$ref": "#/entities/GroupInviteDoc" },
+      "description": "Exact-match invite code lookup table for joining a shared group."
     },
-    "/users/{userId}/groups/{groupId}/resources/{resourceId}": {
-      "schema": { "$ref": "#/entities/StudentResourceDoc" },
-      "description": "Anchored resources belonging to a specific student course group."
+    "/groups/{groupId}/tasks/{taskId}": {
+      "schema": { "$ref": "#/entities/SharedTaskDoc" },
+      "description": "Collaborative tasks belonging to a shared group."
+    },
+    "/groups/{groupId}/resources/{resourceId}": {
+      "schema": { "$ref": "#/entities/SharedResourceDoc" },
+      "description": "Anchored course resources belonging to a shared group."
     }
   }
 }

@@ -3,19 +3,22 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   FolderKanban,
   Plus,
-  RotateCcw,
   Users,
   Bookmark,
   LogOut,
   KeyRound,
   Calendar,
   LayoutGrid,
+  Clock,
+  Trophy,
   X,
+  Pencil,
 } from 'lucide-react';
 import {
   Group,
   calculateGroupProgress,
   calculateMemberWorkloads,
+  isGroupCreator,
 } from '../utils/projectLogic';
 import { StudentAccount } from '../utils/authLogic';
 import {
@@ -24,12 +27,18 @@ import {
   getGroupCoverUrl,
 } from './visualAssets';
 
-export type WorkspaceTab = 'tareas' | 'entregas' | 'equipo' | 'recursos';
+export type WorkspaceTab =
+  | 'tareas'
+  | 'entregas'
+  | 'cronologia'
+  | 'desempeno'
+  | 'equipo'
+  | 'recursos';
 
 interface LeftSidebarProps {
   currentStudent: StudentAccount;
   groups: Group[];
-  activeGroup: Group;
+  activeGroup: Group | null;
   activeTab: WorkspaceTab;
   selectedMemberFilter: string | null;
   isMobileOpen: boolean;
@@ -39,7 +48,7 @@ interface LeftSidebarProps {
   onSelectMemberFilter: (member: string | null) => void;
   onOpenNewGroupModal: () => void;
   onOpenJoinCodeModal: () => void;
-  onResetSeedData: () => void;
+  onOpenEditProfileModal: () => void;
   onLogout: () => void;
 }
 
@@ -56,16 +65,19 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   onSelectMemberFilter,
   onOpenNewGroupModal,
   onOpenJoinCodeModal,
-  onResetSeedData,
+  onOpenEditProfileModal,
   onLogout,
 }) => {
-  const workloads = calculateMemberWorkloads(
-    activeGroup.members,
-    activeGroup.tasks
-  );
-  const pendingDeliveriesCount = activeGroup.tasks.filter(
-    (t) => t.status !== 'Terminado'
-  ).length;
+  const workloads = activeGroup
+    ? calculateMemberWorkloads(activeGroup.members, activeGroup.tasks)
+    : [];
+  const pendingDeliveriesCount = activeGroup
+    ? activeGroup.tasks.filter((t) => t.status !== 'Terminado').length
+    : 0;
+  const gradedCount = activeGroup
+    ? activeGroup.tasks.filter((t) => typeof t.teacherRating === 'number').length
+    : 0;
+  const timelineCount = activeGroup ? (activeGroup.activityLog || []).length : 0;
 
   // Close mobile drawer on Escape key and prevent background scroll while open
   useEffect(() => {
@@ -110,9 +122,9 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
     onOpenJoinCodeModal();
   };
 
-  const handleNavResetSeed = () => {
-    onResetSeedData();
+  const handleNavEditProfile = () => {
     onCloseMobile();
+    onOpenEditProfileModal();
   };
 
   const handleNavLogout = () => {
@@ -125,32 +137,46 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
     label: string;
     count: number;
     icon: React.ReactNode;
-  }> = [
-    {
-      id: 'tareas',
-      label: 'Tablero de Tareas',
-      count: activeGroup.tasks.length,
-      icon: <LayoutGrid className="w-4 h-4 shrink-0" />,
-    },
-    {
-      id: 'entregas',
-      label: 'Calendario de Entregas',
-      count: pendingDeliveriesCount,
-      icon: <Calendar className="w-4 h-4 shrink-0" />,
-    },
-    {
-      id: 'equipo',
-      label: 'Equipo y Reparto',
-      count: activeGroup.members.length,
-      icon: <Users className="w-4 h-4 shrink-0" />,
-    },
-    {
-      id: 'recursos',
-      label: 'Recursos Fijos',
-      count: activeGroup.resources.length,
-      icon: <Bookmark className="w-4 h-4 shrink-0" />,
-    },
-  ];
+  }> = activeGroup
+    ? [
+        {
+          id: 'tareas',
+          label: 'Tablero de Tareas',
+          count: activeGroup.tasks.length,
+          icon: <LayoutGrid className="w-4 h-4 shrink-0" />,
+        },
+        {
+          id: 'entregas',
+          label: 'Calendario de Entregas',
+          count: pendingDeliveriesCount,
+          icon: <Calendar className="w-4 h-4 shrink-0" />,
+        },
+        {
+          id: 'cronologia',
+          label: 'Cronología y Horarios',
+          count: timelineCount,
+          icon: <Clock className="w-4 h-4 shrink-0" />,
+        },
+        {
+          id: 'desempeno',
+          label: 'Desempeño y Notas',
+          count: gradedCount,
+          icon: <Trophy className="w-4 h-4 shrink-0" />,
+        },
+        {
+          id: 'equipo',
+          label: 'Equipo y Reparto',
+          count: activeGroup.members.length,
+          icon: <Users className="w-4 h-4 shrink-0" />,
+        },
+        {
+          id: 'recursos',
+          label: 'Recursos Fijos',
+          count: activeGroup.resources.length,
+          icon: <Bookmark className="w-4 h-4 shrink-0" />,
+        },
+      ]
+    : [];
 
   const renderSidebarContent = (isDrawer: boolean) => (
     <div className="flex flex-col justify-between h-full">
@@ -190,7 +216,17 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
           data-testid={isDrawer ? 'mobile-section-perfil' : 'active-student-card'}
           className="space-y-2"
         >
-          <h2 className="text-xs font-semibold text-slate-400">Perfil</h2>
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-xs font-semibold text-slate-400">Perfil</h2>
+            <button
+              type="button"
+              onClick={handleNavEditProfile}
+              className="inline-flex items-center gap-1 text-[11px] text-sky-400 hover:text-sky-300 cursor-pointer"
+            >
+              <Pencil className="w-3 h-3" />
+              <span>Editar</span>
+            </button>
+          </div>
           <div className="p-2.5 rounded-xl bg-[#131C2E]/90 border border-slate-800/90 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2.5 min-w-0">
               <StudentAvatar name={currentStudent.displayName} size="sm" />
@@ -213,7 +249,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
             <button
               type="button"
               onClick={handleNavLogout}
-              title="Cerrar sesión o cambiar de estudiante"
+              title="Cerrar sesión"
               aria-label="Cerrar sesión"
               className="inline-flex items-center gap-1 px-2.5 py-2 rounded-lg text-[11px] font-medium text-slate-300 hover:text-rose-300 bg-slate-800/70 hover:bg-rose-500/15 border border-slate-700/70 hover:border-rose-500/30 transition-colors cursor-pointer shrink-0"
             >
@@ -223,46 +259,48 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
           </div>
         </section>
 
-        {/* SECCIÓN 2: VISTAS DEL PROYECTO */}
-        <section
-          aria-label="Vistas del proyecto"
-          data-testid={isDrawer ? 'mobile-section-vistas' : 'desktop-section-vistas'}
-          className="pt-4 border-t border-slate-800/80 space-y-2"
-        >
-          <h2 className="text-xs font-semibold text-slate-400">
-            Vistas del Proyecto
-          </h2>
-          <nav aria-label="Secciones del proyecto activo" className="space-y-1.5">
-            {viewNavItems.map((item) => {
-              const isActive = activeTab === item.id;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => handleNavSelectTab(item.id)}
-                  aria-current={isActive ? 'page' : undefined}
-                  className={`w-full flex items-center justify-between gap-2 px-3 ${
-                    isDrawer ? 'min-h-[44px] py-2.5' : 'py-2'
-                  } rounded-xl border text-xs font-medium transition-colors cursor-pointer ${
-                    isActive
-                      ? 'bg-sky-500/15 border-sky-500/40 text-sky-200'
-                      : 'bg-[#111827]/60 border-slate-800/90 text-slate-300 hover:border-slate-700 hover:text-white'
-                  }`}
-                >
-                  <span className="flex items-center gap-2.5 min-w-0 truncate">
-                    <span className={isActive ? 'text-sky-300' : 'text-sky-400/80'}>
-                      {item.icon}
+        {/* SECCIÓN 2: VISTAS DEL PROYECTO (cuando hay un grupo activo) */}
+        {activeGroup && (
+          <section
+            aria-label="Vistas del proyecto"
+            data-testid={isDrawer ? 'mobile-section-vistas' : 'desktop-section-vistas'}
+            className="pt-4 border-t border-slate-800/80 space-y-2"
+          >
+            <h2 className="text-xs font-semibold text-slate-400">
+              Vistas del Proyecto
+            </h2>
+            <nav aria-label="Secciones del proyecto activo" className="space-y-1.5">
+              {viewNavItems.map((item) => {
+                const isActive = activeTab === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => handleNavSelectTab(item.id)}
+                    aria-current={isActive ? 'page' : undefined}
+                    className={`w-full flex items-center justify-between gap-2 px-3 ${
+                      isDrawer ? 'min-h-[44px] py-2.5' : 'py-2'
+                    } rounded-xl border text-xs font-medium transition-colors cursor-pointer ${
+                      isActive
+                        ? 'bg-sky-500/15 border-sky-500/40 text-sky-200'
+                        : 'bg-[#111827]/60 border-slate-800/90 text-slate-300 hover:border-slate-700 hover:text-white'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2.5 min-w-0 truncate">
+                      <span className={isActive ? 'text-sky-300' : 'text-sky-400/80'}>
+                        {item.icon}
+                      </span>
+                      <span className="truncate">{item.label}</span>
                     </span>
-                    <span className="truncate">{item.label}</span>
-                  </span>
-                  <span className="font-mono text-xs tabular-nums text-slate-400 shrink-0">
-                    {item.count}
-                  </span>
-                </button>
-              );
-            })}
-          </nav>
-        </section>
+                    <span className="font-mono text-xs tabular-nums text-slate-400 shrink-0">
+                      {item.count}
+                    </span>
+                  </button>
+                );
+              })}
+            </nav>
+          </section>
+        )}
 
         {/* SECCIÓN 3: MIS GRUPOS */}
         <section
@@ -295,162 +333,166 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
             </div>
           </div>
 
-          <nav aria-label="Lista de grupos escolares" className="space-y-2">
-            {groups.map((group) => {
-              const isSelected = group.id === activeGroup.id;
-              const progress = calculateGroupProgress(group.tasks);
-              const coverSrc = getGroupCoverUrl(
-                group.id,
-                group.name,
-                group.coverUrl
-              );
+          {groups.length === 0 ? (
+            <div className="p-3 rounded-xl bg-[#111827]/60 border border-dashed border-slate-800 text-[11px] text-slate-400 leading-relaxed">
+              Aún no perteneces a ningún grupo. Crea uno nuevo o únete con el código de tu equipo.
+            </div>
+          ) : (
+            <nav aria-label="Lista de grupos escolares" className="space-y-2">
+              {groups.map((group) => {
+                const isSelected = activeGroup ? group.id === activeGroup.id : false;
+                const progress = calculateGroupProgress(group.tasks);
+                const coverSrc = getGroupCoverUrl(
+                  group.id,
+                  group.name,
+                  group.coverUrl
+                );
 
-              return (
-                <motion.button
-                  key={group.id}
-                  type="button"
-                  whileHover={{ y: -1 }}
-                  whileTap={{ scale: 0.99 }}
-                  onClick={() => handleNavSelectGroup(group.id)}
-                  aria-current={isSelected ? 'page' : undefined}
-                  className={`w-full text-left p-2.5 rounded-xl border transition-colors cursor-pointer ${
-                    isSelected
-                      ? 'bg-[#152036] border-sky-500/50 text-slate-100 shadow-sm'
-                      : 'bg-[#111827]/50 border-slate-800/60 text-slate-300 hover:bg-[#141D2E] hover:border-slate-700/80'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-lg overflow-hidden border border-slate-700/70 shrink-0">
-                      <GroupCoverBanner
-                        src={coverSrc}
-                        alt={`Portada de ${group.name}`}
-                        className="w-full h-full"
+                return (
+                  <motion.button
+                    key={group.id}
+                    type="button"
+                    whileHover={{ y: -1 }}
+                    whileTap={{ scale: 0.99 }}
+                    onClick={() => handleNavSelectGroup(group.id)}
+                    aria-current={isSelected ? 'page' : undefined}
+                    className={`w-full text-left p-2.5 rounded-xl border transition-colors cursor-pointer ${
+                      isSelected
+                        ? 'bg-[#152036] border-sky-500/50 text-slate-100 shadow-sm'
+                        : 'bg-[#111827]/50 border-slate-800/60 text-slate-300 hover:bg-[#141D2E] hover:border-slate-700/80'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-lg overflow-hidden border border-slate-700/70 shrink-0">
+                        <GroupCoverBanner
+                          src={coverSrc}
+                          alt={`Portada de ${group.name}`}
+                          className="w-full h-full"
+                        />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-1.5">
+                          <span className="font-display font-semibold text-[13px] truncate">
+                            {group.name}
+                          </span>
+                          <span
+                            className={`font-mono text-xs font-semibold tabular-nums shrink-0 ${
+                              progress.percentage === 100
+                                ? 'text-emerald-400'
+                                : isSelected
+                                ? 'text-sky-400'
+                                : 'text-slate-400'
+                            }`}
+                          >
+                            {progress.percentage}%
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 truncate mt-0.5">
+                          {group.course}
+                          {isGroupCreator(group, currentStudent) ? (
+                            <span className="text-sky-300/90"> · Creador</span>
+                          ) : null}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-2.5 w-full h-1 bg-slate-800/90 rounded-full overflow-hidden">
+                      <motion.div
+                        initial={false}
+                        animate={{ width: `${progress.percentage}%` }}
+                        transition={{ duration: 0.35, ease: 'easeOut' }}
+                        className={`h-full ${
+                          progress.percentage === 100
+                            ? 'bg-emerald-500'
+                            : 'bg-sky-400'
+                        }`}
                       />
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-1.5">
-                        <span className="font-display font-semibold text-[13px] truncate">
-                          {group.name}
-                        </span>
-                        <span
-                          className={`font-mono text-xs font-semibold tabular-nums shrink-0 ${
-                            progress.percentage === 100
-                              ? 'text-emerald-400'
-                              : isSelected
-                              ? 'text-sky-400'
-                              : 'text-slate-400'
-                          }`}
-                        >
-                          {progress.percentage}%
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-slate-400 truncate mt-0.5">
-                        {group.course}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="mt-2.5 w-full h-1 bg-slate-800/90 rounded-full overflow-hidden">
-                    <motion.div
-                      initial={false}
-                      animate={{ width: `${progress.percentage}%` }}
-                      transition={{ duration: 0.35, ease: 'easeOut' }}
-                      className={`h-full ${
-                        progress.percentage === 100
-                          ? 'bg-emerald-500'
-                          : 'bg-sky-400'
-                      }`}
-                    />
-                  </div>
-                </motion.button>
-              );
-            })}
-          </nav>
+                  </motion.button>
+                );
+              })}
+            </nav>
+          )}
         </section>
 
         {/* SECCIÓN 4: FILTRAR POR INTEGRANTE */}
-        <section
-          aria-label="Filtrar tareas por integrante"
-          className="pt-4 border-t border-slate-800/80 space-y-2"
-        >
-          <div className="flex items-center justify-between gap-2">
-            <h2 className="text-xs font-semibold text-slate-400 flex items-center gap-1.5">
-              <Users className="w-3.5 h-3.5" />
-              <span>Filtro por Equipo ({activeGroup.members.length})</span>
-            </h2>
-            {selectedMemberFilter && (
-              <button
-                type="button"
-                onClick={() => {
-                  onSelectMemberFilter(null);
-                  onCloseMobile();
-                }}
-                className="text-[11px] text-sky-400 hover:text-sky-300 cursor-pointer"
-              >
-                Limpiar
-              </button>
-            )}
-          </div>
-
-          <div
-            className="space-y-1"
-            role="list"
-            aria-label="Tareas asignadas por integrante"
+        {activeGroup && (
+          <section
+            aria-label="Filtrar tareas por integrante"
+            className="pt-4 border-t border-slate-800/80 space-y-2"
           >
-            {workloads.map((item) => {
-              const isFiltered = selectedMemberFilter === item.member;
-              return (
-                <div
-                  key={item.member}
-                  role="listitem"
-                  className={`flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg text-xs transition-colors ${
-                    isFiltered
-                      ? 'bg-sky-500/15 text-sky-200 border border-sky-500/30'
-                      : 'text-slate-300 hover:bg-slate-800/50'
-                  }`}
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-xs font-semibold text-slate-400 flex items-center gap-1.5">
+                <Users className="w-3.5 h-3.5" />
+                <span>Filtro por Equipo ({activeGroup.members.length})</span>
+              </h2>
+              {selectedMemberFilter && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSelectMemberFilter(null);
+                    onCloseMobile();
+                  }}
+                  className="text-[11px] text-sky-400 hover:text-sky-300 cursor-pointer"
                 >
-                  <button
-                    type="button"
-                    onClick={() =>
-                      handleNavMemberFilter(item.member, isFiltered)
-                    }
-                    className={`flex items-center gap-2 text-left min-w-0 flex-1 cursor-pointer ${
-                      isDrawer ? 'min-h-[36px]' : ''
+                  Limpiar
+                </button>
+              )}
+            </div>
+
+            <div
+              className="space-y-1"
+              role="list"
+              aria-label="Tareas asignadas por integrante"
+            >
+              {workloads.map((item) => {
+                const isFiltered = selectedMemberFilter === item.member;
+                return (
+                  <div
+                    key={item.member}
+                    role="listitem"
+                    className={`flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg text-xs transition-colors ${
+                      isFiltered
+                        ? 'bg-sky-500/15 text-sky-200 border border-sky-500/30'
+                        : 'text-slate-300 hover:bg-slate-800/50'
                     }`}
-                    title={`Filtrar tareas de ${item.member}`}
                   >
-                    <StudentAvatar name={item.member} size="xs" />
-                    <span className="truncate">{item.member}</span>
-                  </button>
-                  <span
-                    data-testid={
-                      isDrawer
-                        ? `mobile-member-count-${item.member}`
-                        : `member-count-${item.member}`
-                    }
-                    className="font-mono text-xs tabular-nums text-slate-400 shrink-0"
-                  >
-                    {item.totalAssigned}{' '}
-                    {item.totalAssigned === 1 ? 'tarea' : 'tareas'}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </section>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleNavMemberFilter(item.member, isFiltered)
+                      }
+                      className={`flex items-center gap-2 text-left min-w-0 flex-1 cursor-pointer ${
+                        isDrawer ? 'min-h-[36px]' : ''
+                      }`}
+                      title={`Filtrar tareas de ${item.member}`}
+                    >
+                      <StudentAvatar name={item.member} size="xs" />
+                      <span className="truncate">{item.member}</span>
+                    </button>
+                    <span
+                      data-testid={
+                        isDrawer
+                          ? `mobile-member-count-${item.member}`
+                          : `member-count-${item.member}`
+                      }
+                      className="font-mono text-xs tabular-nums text-slate-400 shrink-0"
+                    >
+                      {item.totalAssigned}{' '}
+                      {item.totalAssigned === 1 ? 'tarea' : 'tareas'}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
       </div>
 
       {/* Pie Minimalista */}
       <div className="px-4 py-3 border-t border-slate-800/80 bg-[#0B0F17]/60 flex items-center justify-between gap-2 text-xs text-slate-400 whitespace-nowrap shrink-0">
-        <span>Autoguardado</span>
-        <button
-          type="button"
-          onClick={handleNavResetSeed}
-          className="inline-flex items-center gap-1.5 text-slate-300 hover:text-white transition-colors cursor-pointer shrink-0 py-1"
-        >
-          <RotateCcw className="w-3.5 h-3.5" />
-          <span>Restaurar Demo</span>
-        </button>
+        <span>Guardado en la nube</span>
+        <span className="font-mono text-[11px] text-slate-500">v1.0</span>
       </div>
     </div>
   );
@@ -502,4 +544,3 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
     </>
   );
 };
-
